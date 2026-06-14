@@ -36,26 +36,53 @@ const (
 	animInterval = 180 * time.Millisecond // период смены кадра анимации
 )
 
-// Заяц прыгает и ест морковку. Подскок — сдвигом по вертикали (пустая строка
-// сверху/снизу), морковка ===> ==> => ~ постепенно «съедается».
+// FIGlet-баннеры статуса (шрифт ANSI Shadow) — заголовок над зайцем.
+const bannerOpen = `
+ ██████╗ ███╗   ██╗██╗     ██╗███╗   ██╗███████╗
+██╔═══██╗████╗  ██║██║     ██║████╗  ██║██╔════╝
+██║   ██║██╔██╗ ██║██║     ██║██╔██╗ ██║█████╗
+██║   ██║██║╚██╗██║██║     ██║██║╚██╗██║██╔══╝
+╚██████╔╝██║ ╚████║███████╗██║██║ ╚████║███████╗
+ ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝`
+
+const bannerClosed = `
+ ██████╗ ███████╗███████╗██╗     ██╗███╗   ██╗███████╗
+██╔═══██╗██╔════╝██╔════╝██║     ██║████╗  ██║██╔════╝
+██║   ██║█████╗  █████╗  ██║     ██║██╔██╗ ██║█████╗
+██║   ██║██╔══╝  ██╔══╝  ██║     ██║██║╚██╗██║██╔══╝
+╚██████╔╝██║     ██║     ███████╗██║██║ ╚████║███████╗
+ ╚═════╝ ╚═╝     ╚═╝     ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝`
+
+// Высота кадра зайца фиксирована (bunnyH строк) — заяц «прыгает» вертикальным
+// сдвигом внутри неё, поэтому карточка не дёргается.
+const bunnyH = 5
+
+// Прыжок с морковкой: подъём → пик → спуск → приземление → пара кадров жевания.
+// Морковка ]==> ]=> ]> * постепенно «съедается».
 var activeFrames = [][]string{
-	{"", ` (\_/)`, ` (o.o) ===>`, `(")_(")`},
-	{` (\_/)`, ` (^.^) ==>`, `(")_(")`, ""},
-	{"", ` (\_/)`, ` (o.o) =>`, `(")_(")`},
-	{` (\_/)`, ` (>.<)  ~`, `(")_(")`, ""},
+	{``, ``, `(\_/)`, `(o.o) ]==>`, `(")_(")`},
+	{``, `(\_/)`, `(o.o) ]=>`, `(")_(")`, ``},
+	{`(\_/)`, `(^.^) ]>`, `(")_(")`, ``, ``},
+	{`(\_/)`, `(^.^) ]`, `(")_(")`, ``, ``},
+	{``, `(\_/)`, `(o.o)  *`, `(")_(")`, ``},
+	{``, ``, `(\_/)`, `(-.-) ]==>`, `(")_(")`},
+	{``, ``, `(\_/)`, `(o.o) ]==>`, `(")_(")`},
+	{``, ``, `(\_/)`, `(o.o) ]=>`, `(")_(")`},
 }
 
-// Заяц спит: прикрытые глаза + дрейфующие вверх zZz.
+// Сон: заяц лежит внизу, прикрытые глаза, вверх дрейфуют zZz + кадр-пауза (вдох).
 var sleepFrames = [][]string{
-	{`  z`, ` (\_/)`, ` (-.-)`, `(")_(")`},
-	{`   z Z`, ` (\_/)`, ` (-.-)`, `(")_(")`},
-	{`    z Z z`, ` (\_/)`, ` (u.u)`, `(")_(")`},
-	{`   Z z`, ` (\_/)`, ` (-.-)`, `(")_(")`},
+	{``, `      z`, `(\_/)`, `(-.-)`, `(")_(")`},
+	{``, `       Z`, `(\_/)`, `(-.-)`, `(")_(")`},
+	{`      z`, `       Z`, `(\_/)`, `(u.u)`, `(")_(")`},
+	{`       Z`, `      z`, `(\_/)`, `(-.-)`, `(")_(")`},
+	{``, `      z`, `(\_/)`, `(-.-)`, `(")_(")`},
+	{``, ``, `(\_/)`, `(-.-)`, `(")_(")`},
 }
 
 const (
-	wordActive = "HOP HOP! ням-ням морковка"
-	wordSleep  = "zZz... нет морковки"
+	wordActive = "HOP HOP! ням-ням морковку"
+	wordSleep  = "zZz... спит, морковки нет"
 )
 
 type config struct {
@@ -289,10 +316,18 @@ func shortErr(err error) string {
 	}
 }
 
+// line — строка содержимого карточки. centered=true → центрируется внутри
+// карточки; иначе выравнивается по левому краю (так баннер сохраняет внутреннюю
+// раскладку: центрировать его строки по отдельности нельзя — разъедутся).
+type line struct {
+	text     string
+	centered bool
+}
+
 func paint(target string, ok bool, info string, frame, cardW int, redraw bool) {
-	bg, frames, word := redBG, sleepFrames, wordSleep
+	bg, banner, frames, word := redBG, bannerClosed, sleepFrames, wordSleep
 	if ok {
-		bg, frames, word = greenBG, activeFrames, wordActive
+		bg, banner, frames, word = greenBG, bannerOpen, activeFrames, wordActive
 	}
 
 	status := "TCP " + target + "  •  " + statusWord(ok)
@@ -300,26 +335,39 @@ func paint(target string, ok bool, info string, frame, cardW int, redraw bool) {
 		status += "  (" + info + ")"
 	}
 
-	// Карточка: пустая, 4 строки зайца, пустая, тема, пустая, статус, пустая.
-	content := []string{""}
-	content = append(content, frames[frame%len(frames)]...)
-	content = append(content, "", word, "", status, "")
+	// Карточка: баннер (блоком) → заяц → тема → статус, с пустыми строками-отступами.
+	var content []line
+	content = append(content, line{"", false})
+	for _, ln := range bannerLines(banner) {
+		content = append(content, line{ln, false})
+	}
+	content = append(content, line{"", false})
+	for _, ln := range frames[frame%len(frames)] {
+		content = append(content, line{ln, true})
+	}
+	content = append(content, line{"", false}, line{word, true}, line{"", false}, line{status, true}, line{"", false})
 
-	pad := strings.Repeat(" ", margin)
+	inner := cardW - margin*2 // внутренняя ширина без боковых отступов
 	var b strings.Builder
 	if redraw {
 		b.WriteString("\033[H") // курсор в угол — перерисовываем поверх старого кадра
 	}
 	for _, ln := range content {
-		// Единый отступ слева — блок центрируется как целое, справа добиваем до cardW.
-		right := cardW - margin - utf8.RuneCountInString(ln)
-		if right < 0 {
-			right = 0
+		n := utf8.RuneCountInString(ln.text)
+		left := 0
+		if ln.centered {
+			left = (inner - n) / 2
 		}
-		b.WriteString(bg + bold + pad + ln + strings.Repeat(" ", right) + reset)
+		right := max(inner-left-n, 0)
+		b.WriteString(bg + bold + strings.Repeat(" ", margin+left) + ln.text + strings.Repeat(" ", right) + reset)
 		b.WriteString("\033[K\n") // гасим хвост строки от прошлого кадра
 	}
 	fmt.Print(b.String())
+}
+
+// bannerLines режет FIGlet-баннер на строки (убирая обрамляющие переносы).
+func bannerLines(s string) []string {
+	return strings.Split(strings.Trim(s, "\n"), "\n")
 }
 
 func statusWord(ok bool) string {
@@ -333,6 +381,8 @@ func statusWord(ok bool) string {
 // возможным статусным строкам, чтобы ширина не «дышала» от кадра к кадру.
 func cardWidth(target string) int {
 	var samples []string
+	samples = append(samples, bannerLines(bannerOpen)...)
+	samples = append(samples, bannerLines(bannerClosed)...)
 	for _, fr := range activeFrames {
 		samples = append(samples, fr...)
 	}
