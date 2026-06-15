@@ -80,10 +80,6 @@ var sleepFrames = [][]string{
 	{``, ``, `(\_/)`, `(-.-)`, `(")_(")`},
 }
 
-const (
-	wordActive = "HOP HOP! ням-ням морковку"
-	wordSleep  = "zZz... спит, морковки нет"
-)
 
 type config struct {
 	host    string
@@ -241,7 +237,7 @@ func run(cfg config) {
 	signal.Notify(sig, os.Interrupt)
 	go func() {
 		<-sig
-		fmt.Print(reset + "\033[?25h\nЗайчик убежал. Пока!\n")
+		fmt.Print(reset + "\033[?25h\n")
 		os.Exit(130)
 	}()
 
@@ -325,9 +321,9 @@ type line struct {
 }
 
 func paint(target string, ok bool, info string, frame, cardW int, redraw bool) {
-	bg, banner, frames, word := redBG, bannerClosed, sleepFrames, wordSleep
+	bg, banner, frames := redBG, bannerClosed, sleepFrames
 	if ok {
-		bg, banner, frames, word = greenBG, bannerOpen, activeFrames, wordActive
+		bg, banner, frames = greenBG, bannerOpen, activeFrames
 	}
 
 	status := "TCP " + target + "  •  " + statusWord(ok)
@@ -335,7 +331,7 @@ func paint(target string, ok bool, info string, frame, cardW int, redraw bool) {
 		status += "  (" + info + ")"
 	}
 
-	// Карточка: баннер (блоком) → заяц → тема → статус, с пустыми строками-отступами.
+	// Карточка: баннер (блоком) → заяц → статус, с пустыми строками-отступами.
 	var content []line
 	content = append(content, line{"", false})
 	for _, ln := range bannerLines(banner) {
@@ -345,7 +341,7 @@ func paint(target string, ok bool, info string, frame, cardW int, redraw bool) {
 	for _, ln := range frames[frame%len(frames)] {
 		content = append(content, line{ln, true})
 	}
-	content = append(content, line{"", false}, line{word, true}, line{"", false}, line{status, true}, line{"", false})
+	content = append(content, line{"", false}, line{status, true}, line{"", false})
 
 	inner := cardW - margin*2 // внутренняя ширина без боковых отступов
 	var b strings.Builder
@@ -389,7 +385,6 @@ func cardWidth(target string) int {
 	for _, fr := range sleepFrames {
 		samples = append(samples, fr...)
 	}
-	samples = append(samples, wordActive, wordSleep)
 	infos := []string{"соединяюсь...", "connection refused", "не резолвится", "нет соединения", "timeout", "9999ms"}
 	for _, w := range []string{"ONLINE", "OFFLINE"} {
 		for _, inf := range infos {
